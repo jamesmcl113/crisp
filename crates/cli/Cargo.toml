@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 crisp = {path = "../crisp"}
+rustyline = {version = "12.0.0", features=["derive"]}
