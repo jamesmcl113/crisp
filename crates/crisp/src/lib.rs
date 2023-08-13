@@ -2,6 +2,7 @@ use eval::{eval, CrispEnv};
 use parse::{parse, CrispResult};
 
 pub mod eval;
+mod lang;
 pub mod parse;
 
 pub fn lexer(s: &str) -> Vec<String> {

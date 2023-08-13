@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::parse::{parse_floats, CrispError, CrispExpr, CrispFn, CrispResult};
+use crate::{
+    lang,
+    parse::{parse_floats, CrispError, CrispExpr, CrispFn, CrispResult},
+};
 
 pub struct CrispEnv {
     pub symbols: HashMap<String, CrispExpr>,
@@ -38,6 +41,16 @@ impl Default for CrispEnv {
     }
 }
 
+fn eval_built_in(expr: &CrispExpr, args: &[CrispExpr], env: &mut CrispEnv) -> Option<CrispResult> {
+    match expr {
+        CrispExpr::Symbol(name) => match name.as_ref() {
+            "def" => Some(lang::def(args, env)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispError> {
     match expr {
         CrispExpr::List(list) => {
@@ -45,16 +58,21 @@ pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispErro
                 "Can't eval an empty list.".to_string(),
             ))?;
 
-            let first_form = eval(first, env)?;
-            match first_form {
-                CrispExpr::Fn(f) => {
-                    let eval_args: Result<Vec<CrispExpr>, CrispError> =
-                        rest.iter().map(|arg| eval(arg, env)).collect();
-                    f.0(&eval_args?)
+            match eval_built_in(first, rest, env) {
+                Some(res) => res,
+                None => {
+                    let first_form = eval(first, env)?;
+                    match first_form {
+                        CrispExpr::Fn(f) => {
+                            let eval_args: Result<Vec<CrispExpr>, CrispError> =
+                                rest.iter().map(|arg| eval(arg, env)).collect();
+                            f.0(&eval_args?)
+                        }
+                        _ => Err(CrispError::EvalError(
+                            "First form must be a function".to_string(),
+                        )),
+                    }
                 }
-                _ => Err(CrispError::EvalError(
-                    "First form must be a function".to_string(),
-                )),
             }
         }
         CrispExpr::Symbol(name) => env

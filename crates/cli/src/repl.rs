@@ -26,8 +26,10 @@ pub fn run(env: &mut CrispEnv) -> Result<(), Box<dyn Error>> {
 
     loop {
         let input = rl.readline("> ")?;
-        let res = crisp::run_program(&input, env)?;
-
-        println!("{res:?}");
+        rl.add_history_entry(&input)?;
+        match crisp::run_program(&input, env) {
+            Ok(res) => println!("{res:?}"),
+            Err(err) => println!("Error: {err}"),
+        }
     }
 }
