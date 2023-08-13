@@ -9,6 +9,8 @@ pub enum CrispError {
     EvalError(String),
 }
 
+impl std::error::Error for CrispError {}
+
 impl Display for CrispError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {

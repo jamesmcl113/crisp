@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parse::{parse_floats, CrispError, CrispExpr, CrispFn};
+use crate::parse::{parse_floats, CrispError, CrispExpr, CrispFn, CrispResult};
 
 pub struct CrispEnv {
     pub symbols: HashMap<String, CrispExpr>,
@@ -47,7 +47,11 @@ pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispErro
 
             let first_form = eval(first, env)?;
             match first_form {
-                CrispExpr::Fn(f) => f.0(rest),
+                CrispExpr::Fn(f) => {
+                    let eval_args: Result<Vec<CrispExpr>, CrispError> =
+                        rest.iter().map(|arg| eval(arg, env)).collect();
+                    f.0(&eval_args?)
+                }
                 _ => Err(CrispError::EvalError(
                     "First form must be a function".to_string(),
                 )),
