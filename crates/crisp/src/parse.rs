@@ -26,6 +26,12 @@ impl Display for CrispError {
 #[derive(Clone)]
 pub struct CrispFn(pub fn(&[CrispExpr]) -> Result<CrispExpr, CrispError>);
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrispLambda {
+    pub params: Vec<String>,
+    pub body: Box<CrispExpr>,
+}
+
 impl Debug for CrispFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Function")
@@ -46,6 +52,16 @@ pub enum CrispExpr {
     Number(f32),
     List(Vec<CrispExpr>),
     Fn(CrispFn),
+    Lambda(CrispLambda),
+}
+
+impl CrispExpr {
+    pub fn is_symbol(&self) -> bool {
+        match self {
+            Self::Symbol(_) => true,
+            _ => false,
+        }
+    }
 }
 
 pub type CrispResult = Result<CrispExpr, CrispError>;
@@ -62,6 +78,7 @@ impl Display for CrispExpr {
                     .collect::<Vec<String>>()
             ),
             Self::Fn(f) => todo!(),
+            Self::Lambda(f) => todo!(),
         };
 
         write!(f, "{msg}")
@@ -98,6 +115,18 @@ fn parse_list<'a>(tokens: &'a [String]) -> Result<(CrispExpr, &'a [String]), Cri
 
 pub fn parse_floats(tokens: &[CrispExpr]) -> Result<Vec<f32>, CrispError> {
     parse_while(tokens, parse_float)
+}
+
+pub fn parse_param_list(params: &[CrispExpr]) -> Result<Vec<String>, CrispError> {
+    parse_while(params, parse_symbol)
+        .map_err(|_| CrispError::EvalError("Param list must contain only symbols".to_string()))
+}
+
+fn parse_symbol(token: &CrispExpr) -> Result<String, CrispError> {
+    match token {
+        CrispExpr::Symbol(name) => Ok(name.clone()),
+        _ => Err(CrispError::EvalError("Expected a symbol".to_string())),
+    }
 }
 
 fn parse_float(expr: &CrispExpr) -> Result<f32, CrispError> {

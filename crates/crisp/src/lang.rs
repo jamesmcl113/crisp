@@ -1,6 +1,6 @@
 use crate::{
-    eval::{self, eval, CrispEnv},
-    parse::{CrispError, CrispExpr, CrispResult},
+    eval::{eval, CrispEnv},
+    parse::{parse_param_list, CrispError, CrispExpr, CrispLambda, CrispResult},
 };
 
 pub fn def(args: &[CrispExpr], env: &mut CrispEnv) -> CrispResult {
@@ -34,4 +34,28 @@ pub fn def(args: &[CrispExpr], env: &mut CrispEnv) -> CrispResult {
             "First argument must be a symbol".to_string(),
         ))
     }
+}
+
+pub fn lambda(args: &[CrispExpr], env: &mut CrispEnv) -> CrispResult {
+    if args.len() > 2 {
+        return Err(CrispError::EvalError(
+            "fn takes exactly 2 arguments".to_string(),
+        ));
+    }
+
+    let params = args.first().ok_or(CrispError::EvalError(
+        "Expected a param expression".to_string(),
+    ))?;
+
+    let symbol_names = match params {
+        CrispExpr::List(xs) => parse_param_list(xs)?,
+        _ => return Err(CrispError::EvalError("Params should be a list".to_string())),
+    };
+
+    let body = args.get(1).unwrap();
+
+    Ok(CrispExpr::Lambda(CrispLambda {
+        params: symbol_names,
+        body: Box::new(body.clone()),
+    }))
 }

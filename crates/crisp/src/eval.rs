@@ -5,11 +5,31 @@ use crate::{
     parse::{parse_floats, CrispError, CrispExpr, CrispFn, CrispResult},
 };
 
-pub struct CrispEnv {
+pub struct CrispEnv<'a> {
     pub symbols: HashMap<String, CrispExpr>,
+    pub parent: Option<&'a CrispEnv<'a>>,
 }
 
-impl Default for CrispEnv {
+impl<'a> CrispEnv<'a> {
+    pub fn from_parent(parent: &'a CrispEnv) -> Self {
+        Self {
+            symbols: HashMap::new(),
+            parent: Some(parent),
+        }
+    }
+
+    pub fn get(&self, name: &str) -> Option<CrispExpr> {
+        match self.symbols.get(name) {
+            Some(val) => Some(val.clone()),
+            None => match self.parent {
+                Some(outer) => outer.get(name),
+                None => None,
+            },
+        }
+    }
+}
+
+impl<'a> Default for CrispEnv<'a> {
     fn default() -> Self {
         let mut symbols: HashMap<String, CrispExpr> = HashMap::new();
 
@@ -27,17 +47,25 @@ impl Default for CrispEnv {
         );
 
         symbols.insert(
-            "quote".to_string(),
+            "-".to_string(),
             CrispExpr::Fn(CrispFn(
                 |args: &[CrispExpr]| -> Result<CrispExpr, CrispError> {
-                    args.first().cloned().ok_or(CrispError::SyntaxError(
-                        "quote takes a single argument".to_string(),
+                    let floats = parse_floats(args)?;
+                    let (first, rest) = floats.split_first().ok_or(CrispError::EvalError(
+                        "- takes at least one argument".to_string(),
+                    ))?;
+
+                    Ok(CrispExpr::Number(
+                        rest.into_iter().fold(*first, |acc, &x| acc - x),
                     ))
                 },
             )),
         );
 
-        Self { symbols }
+        Self {
+            symbols,
+            parent: None,
+        }
     }
 }
 
@@ -45,6 +73,8 @@ fn eval_built_in(expr: &CrispExpr, args: &[CrispExpr], env: &mut CrispEnv) -> Op
     match expr {
         CrispExpr::Symbol(name) => match name.as_ref() {
             "def" => Some(lang::def(args, env)),
+            "fn" => Some(lang::lambda(args, env)),
+            "quote" => args.first().map(|list| Ok(list.clone())),
             _ => None,
         },
         _ => None,
@@ -62,11 +92,28 @@ pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispErro
                 Some(res) => res,
                 None => {
                     let first_form = eval(first, env)?;
+                    let eval_args: Result<Vec<CrispExpr>, CrispError> =
+                        rest.iter().map(|arg| eval(arg, env)).collect();
                     match first_form {
-                        CrispExpr::Fn(f) => {
-                            let eval_args: Result<Vec<CrispExpr>, CrispError> =
-                                rest.iter().map(|arg| eval(arg, env)).collect();
-                            f.0(&eval_args?)
+                        CrispExpr::Fn(f) => f.0(&eval_args?),
+                        CrispExpr::Lambda(lambda) => {
+                            let mut lambda_env = CrispEnv::from_parent(&env);
+
+                            let eval_args = eval_args?;
+
+                            if eval_args.len() != lambda.params.len() {
+                                Err(CrispError::EvalError(
+                                    "Wrong number of arguments were supplied".to_string(),
+                                ))
+                            } else {
+                                eval_args.iter().zip(lambda.params.iter()).for_each(
+                                    |(val, name)| {
+                                        lambda_env.symbols.insert(name.clone(), val.clone());
+                                    },
+                                );
+
+                                eval(&lambda.body, &mut lambda_env)
+                            }
                         }
                         _ => Err(CrispError::EvalError(
                             "First form must be a function".to_string(),
@@ -76,9 +123,7 @@ pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispErro
             }
         }
         CrispExpr::Symbol(name) => env
-            .symbols
             .get(name)
-            .cloned()
             .ok_or(CrispError::EvalError(format!("Unknown symbol: {name}"))),
         CrispExpr::Number(_) => Ok(expr.clone()),
         _ => Err(CrispError::EvalError(expr.to_string())),
