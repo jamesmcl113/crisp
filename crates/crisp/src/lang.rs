@@ -1,11 +1,6 @@
-use crate::{
-    eval::{eval, CrispEnv},
-    parse::parse_param_list,
-};
-
 use std::fmt::{Debug, Display};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CrispError {
     SyntaxError(String),
     MissingParen(u32, u32),

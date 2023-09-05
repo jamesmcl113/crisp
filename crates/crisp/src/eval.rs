@@ -63,6 +63,19 @@ impl<'a> Default for CrispEnv<'a> {
         );
 
         symbols.insert(
+            "*".to_string(),
+            CrispExpr::Fn(CrispFn(
+                |args: &[CrispExpr]| -> Result<CrispExpr, CrispError> {
+                    let floats = parse_floats(args)?;
+
+                    Ok(CrispExpr::Primitive(Primitive::Number(
+                        floats.into_iter().fold(1., |acc, x| acc * x),
+                    )))
+                },
+            )),
+        );
+
+        symbols.insert(
             ">".to_string(),
             CrispExpr::Fn(CrispFn(
                 |args: &[CrispExpr]| -> Result<CrispExpr, CrispError> {
@@ -84,19 +97,6 @@ impl<'a> Default for CrispEnv<'a> {
             symbols,
             parent: None,
         }
-    }
-}
-
-/// Evaluate a built-in expression
-fn eval_built_in(expr: &CrispExpr, args: &[CrispExpr], env: &mut CrispEnv) -> Option<CrispResult> {
-    match expr {
-        CrispExpr::Symbol(name) => match name.as_ref() {
-            "def" => Some(eval_def(args, env)),
-            "fn" => Some(eval_lambda(args)),
-            "quote" => args.first().map(|list| Ok(list.clone())),
-            _ => None,
-        },
-        _ => None,
     }
 }
 
@@ -146,6 +146,64 @@ pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispErro
             .ok_or(CrispError::EvalError(format!("Unknown symbol: {name}"))),
         CrispExpr::Primitive(_) => Ok(expr.clone()),
         _ => Err(CrispError::EvalError(expr.to_string())),
+    }
+}
+
+/// Evaluate a built-in expression
+fn eval_built_in(expr: &CrispExpr, args: &[CrispExpr], env: &mut CrispEnv) -> Option<CrispResult> {
+    match expr {
+        CrispExpr::Symbol(name) => match name.as_ref() {
+            "begin" => Some(eval_begin(args, env)),
+            "def" => Some(eval_def(args, env)),
+            "fn" => Some(eval_lambda(args)),
+            "if" => Some(eval_if(args, env)),
+            "quote" => args.first().map(|list| Ok(list.clone())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn eval_begin(args: &[CrispExpr], env: &mut CrispEnv) -> CrispResult {
+    let mut last_res: Option<CrispResult> = None;
+    for expr in args {
+        last_res = match eval(expr, env) {
+            Err(e) => return Err(e),
+            Ok(res) => Some(Ok(res)),
+        }
+    }
+
+    last_res.unwrap()
+}
+
+/// Evaluate an if expression
+pub fn eval_if(args: &[CrispExpr], env: &mut CrispEnv) -> CrispResult {
+    if args.len() > 3 {
+        return Err(CrispError::EvalError(
+            "if takes exactly three arguments".to_string(),
+        ));
+    }
+
+    let test_form = args
+        .first()
+        .ok_or(CrispError::EvalError("Expected an expression".to_string()))?;
+
+    let test_res = match eval(test_form, env) {
+        Ok(CrispExpr::Primitive(Primitive::Bool(b))) => b,
+        _ => {
+            return Err(CrispError::EvalError(
+                "Test form must evaluate to a boolean".to_string(),
+            ))
+        }
+    };
+
+    let res_arg = if test_res { args.get(1) } else { args.get(2) };
+
+    match res_arg {
+        Some(expr) => eval(expr, env),
+        None => Err(CrispError::EvalError(
+            "missing true or false clause".to_string(),
+        )),
     }
 }
 

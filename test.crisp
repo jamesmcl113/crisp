@@ -1,0 +1,6 @@
+(begin
+  (def add (fn (a b) (if (> b 0) (+ 1 (add a (- b 1))) a)))
+  (def fac (fn (a) (if (> a 2) (* a (fac (- a 1))) a)))
+  (add 5 6)
+  (fac 4)
+)

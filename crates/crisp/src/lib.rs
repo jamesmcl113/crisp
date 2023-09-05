@@ -1,5 +1,5 @@
 use eval::{eval, CrispEnv};
-use lang::CrispResult;
+use lang::{CrispExpr, CrispResult};
 use parse::parse;
 
 pub mod eval;
