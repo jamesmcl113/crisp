@@ -2,7 +2,7 @@ use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, Editor, EventHandler, KeyCode, KeyEvent, Modifiers};
 use rustyline::{Completer, Helper, Highlighter, Hinter, Validator};
 
-use crisp::{eval::CrispEnv, parse::CrispExpr};
+use crisp::eval::CrispEnv;
 
 use std::error::Error;
 

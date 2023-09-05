@@ -4,10 +4,9 @@ use std::env;
 use std::error::Error;
 use std::fs;
 
-use crisp::eval::{eval, CrispEnv};
-use crisp::parse::parse;
-use crisp::parse::CrispResult;
-use crisp::{lexer, run_program};
+use crisp::eval::CrispEnv;
+use crisp::lang::CrispResult;
+use crisp::run_program;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();

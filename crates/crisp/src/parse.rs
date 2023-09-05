@@ -1,89 +1,6 @@
 #![allow(dead_code)]
 
-use std::fmt::{Debug, Display};
-
-#[derive(Debug, PartialEq)]
-pub enum CrispError {
-    SyntaxError(String),
-    MissingParen(u32, u32),
-    EvalError(String),
-}
-
-impl std::error::Error for CrispError {}
-
-impl Display for CrispError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match self {
-            Self::SyntaxError(msg) => format!("syntax error: {msg}"),
-            Self::MissingParen(line, char) => format!("missing paren at line {line}, char {char}"),
-            Self::EvalError(msg) => format!("error evaluating expr: {msg}"),
-        };
-
-        write!(f, "{msg}")
-    }
-}
-
-#[derive(Clone)]
-pub struct CrispFn(pub fn(&[CrispExpr]) -> Result<CrispExpr, CrispError>);
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CrispLambda {
-    pub params: Vec<String>,
-    pub body: Box<CrispExpr>,
-}
-
-impl Debug for CrispFn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Function")
-    }
-}
-
-impl PartialEq for CrispFn {
-    fn eq(&self, other: &Self) -> bool {
-        let x = self as *const _;
-        let y = other as *const _;
-        x == y
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CrispExpr {
-    Symbol(String),
-    Number(f32),
-    List(Vec<CrispExpr>),
-    Fn(CrispFn),
-    Lambda(CrispLambda),
-}
-
-impl CrispExpr {
-    pub fn is_symbol(&self) -> bool {
-        match self {
-            Self::Symbol(_) => true,
-            _ => false,
-        }
-    }
-}
-
-pub type CrispResult = Result<CrispExpr, CrispError>;
-
-impl Display for CrispExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match self {
-            Self::Number(num) => format!("Number: {num}"),
-            Self::Symbol(name) => format!("Symbol: {name}"),
-            Self::List(exps) => format!(
-                "List: ({:?})",
-                exps.iter()
-                    .map(|expr| expr.to_string())
-                    .collect::<Vec<String>>()
-            ),
-            Self::Fn(f) => todo!(),
-            Self::Lambda(f) => todo!(),
-        };
-
-        write!(f, "{msg}")
-    }
-}
+use crate::lang::{CrispError, CrispExpr, CrispResult, Primitive};
 
 pub fn parse<'a>(tokens: &'a [String]) -> Result<(CrispExpr, &'a [String]), CrispError> {
     let (first, rest) = tokens.split_first().ok_or(CrispError::MissingParen(1, 0))?;
@@ -131,7 +48,7 @@ fn parse_symbol(token: &CrispExpr) -> Result<String, CrispError> {
 
 fn parse_float(expr: &CrispExpr) -> Result<f32, CrispError> {
     match expr {
-        CrispExpr::Number(x) => Ok(*x),
+        CrispExpr::Primitive(Primitive::Number(x)) => Ok(*x),
         _ => Err(CrispError::EvalError("Expected a number".to_string())),
     }
 }
@@ -147,8 +64,12 @@ fn parse_atom(token: &str) -> Result<CrispExpr, CrispError> {
     let float = token.parse::<f32>();
 
     match float {
-        Ok(f) => Ok(CrispExpr::Number(f)),
-        Err(_) => Ok(CrispExpr::Symbol(token.to_string())),
+        Ok(f) => Ok(CrispExpr::Primitive(Primitive::Number(f))),
+        Err(_) => match token {
+            "true" => Ok(CrispExpr::Primitive(Primitive::Bool(true))),
+            "false" => Ok(CrispExpr::Primitive(Primitive::Bool(false))),
+            _ => Ok(CrispExpr::Symbol(token.to_string())),
+        },
     }
 }
 
@@ -167,9 +88,9 @@ mod tests {
         assert_eq!(
             expr,
             CrispExpr::List(vec![
-                CrispExpr::Number(3.),
-                CrispExpr::Number(5.),
-                CrispExpr::Number(7.)
+                CrispExpr::Primitive(Primitive::Number(3.)),
+                CrispExpr::Primitive(Primitive::Number(5.)),
+                CrispExpr::Primitive(Primitive::Number(7.))
             ])
         );
     }
@@ -185,8 +106,8 @@ mod tests {
             expr,
             CrispExpr::List(vec![
                 CrispExpr::Symbol("+".to_string()),
-                CrispExpr::Number(5.),
-                CrispExpr::Number(7.)
+                CrispExpr::Primitive(Primitive::Number(5.)),
+                CrispExpr::Primitive(Primitive::Number(7.))
             ])
         );
     }
@@ -202,12 +123,12 @@ mod tests {
             expr,
             CrispExpr::List(vec![
                 CrispExpr::List(vec![
-                    CrispExpr::Number(-1.),
-                    CrispExpr::Number(10.),
-                    CrispExpr::Number(4.)
+                    CrispExpr::Primitive(Primitive::Number(-1.)),
+                    CrispExpr::Primitive(Primitive::Number(10.)),
+                    CrispExpr::Primitive(Primitive::Number(4.))
                 ]),
-                CrispExpr::Number(6.),
-                CrispExpr::Number(7.)
+                CrispExpr::Primitive(Primitive::Number(6.)),
+                CrispExpr::Primitive(Primitive::Number(7.))
             ])
         );
     }

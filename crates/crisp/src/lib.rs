@@ -1,8 +1,9 @@
 use eval::{eval, CrispEnv};
-use parse::{parse, CrispResult};
+use lang::CrispResult;
+use parse::parse;
 
 pub mod eval;
-mod lang;
+pub mod lang;
 pub mod parse;
 
 pub fn lexer(s: &str) -> Vec<String> {

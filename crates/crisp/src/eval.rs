@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    lang,
-    parse::{parse_floats, CrispError, CrispExpr, CrispFn, CrispResult},
+    lang::{CrispError, CrispExpr, CrispFn, CrispLambda, CrispResult, Primitive},
+    parse::{parse_floats, parse_param_list},
 };
 
 pub struct CrispEnv<'a> {
@@ -39,9 +39,9 @@ impl<'a> Default for CrispEnv<'a> {
                 |args: &[CrispExpr]| -> Result<CrispExpr, CrispError> {
                     let floats = parse_floats(args)?;
 
-                    Ok(CrispExpr::Number(
+                    Ok(CrispExpr::Primitive(Primitive::Number(
                         floats.into_iter().fold(0., |acc, x| acc + x),
-                    ))
+                    )))
                 },
             )),
         );
@@ -55,9 +55,27 @@ impl<'a> Default for CrispEnv<'a> {
                         "- takes at least one argument".to_string(),
                     ))?;
 
-                    Ok(CrispExpr::Number(
+                    Ok(CrispExpr::Primitive(Primitive::Number(
                         rest.into_iter().fold(*first, |acc, &x| acc - x),
-                    ))
+                    )))
+                },
+            )),
+        );
+
+        symbols.insert(
+            ">".to_string(),
+            CrispExpr::Fn(CrispFn(
+                |args: &[CrispExpr]| -> Result<CrispExpr, CrispError> {
+                    let floats = parse_floats(args)?;
+                    let (first, rest) = floats.split_first().ok_or(CrispError::EvalError(
+                        "> takes at least one argument".to_string(),
+                    ))?;
+
+                    let second = rest.first().ok_or(CrispError::EvalError(
+                        "Expected a second argument".to_string(),
+                    ))?;
+
+                    Ok(CrispExpr::Primitive(Primitive::Bool(first > second)))
                 },
             )),
         );
@@ -69,11 +87,12 @@ impl<'a> Default for CrispEnv<'a> {
     }
 }
 
+/// Evaluate a built-in expression
 fn eval_built_in(expr: &CrispExpr, args: &[CrispExpr], env: &mut CrispEnv) -> Option<CrispResult> {
     match expr {
         CrispExpr::Symbol(name) => match name.as_ref() {
-            "def" => Some(lang::def(args, env)),
-            "fn" => Some(lang::lambda(args, env)),
+            "def" => Some(eval_def(args, env)),
+            "fn" => Some(eval_lambda(args)),
             "quote" => args.first().map(|list| Ok(list.clone())),
             _ => None,
         },
@@ -125,9 +144,68 @@ pub fn eval(expr: &CrispExpr, env: &mut CrispEnv) -> Result<CrispExpr, CrispErro
         CrispExpr::Symbol(name) => env
             .get(name)
             .ok_or(CrispError::EvalError(format!("Unknown symbol: {name}"))),
-        CrispExpr::Number(_) => Ok(expr.clone()),
+        CrispExpr::Primitive(_) => Ok(expr.clone()),
         _ => Err(CrispError::EvalError(expr.to_string())),
     }
+}
+
+/// Evaluate a binding definition
+pub fn eval_def(args: &[CrispExpr], env: &mut CrispEnv) -> CrispResult {
+    if args.len() > 2 {
+        return Err(CrispError::EvalError(
+            "def takes exactly two arguments".to_string(),
+        ));
+    }
+    let first_form = args
+        .first()
+        .ok_or(CrispError::EvalError("Expected a name".to_string()))?;
+
+    if let CrispExpr::Symbol(name) = first_form {
+        if env.symbols.contains_key(name) {
+            return Err(CrispError::EvalError(format!(
+                "Variable with name '{name}' already exists"
+            )));
+        }
+
+        let second_form = args
+            .get(1)
+            .ok_or(CrispError::EvalError("Expected a value".to_string()))?;
+
+        let val = eval(second_form, env)?;
+
+        env.symbols.insert(name.clone(), val);
+
+        Ok(first_form.clone())
+    } else {
+        Err(CrispError::EvalError(
+            "First argument must be a symbol".to_string(),
+        ))
+    }
+}
+
+/// Evaluate a lambda definition
+pub fn eval_lambda(args: &[CrispExpr]) -> CrispResult {
+    if args.len() > 2 {
+        return Err(CrispError::EvalError(
+            "fn takes exactly 2 arguments".to_string(),
+        ));
+    }
+
+    let params = args.first().ok_or(CrispError::EvalError(
+        "Expected a param expression".to_string(),
+    ))?;
+
+    let symbol_names = match params {
+        CrispExpr::List(xs) => parse_param_list(xs)?,
+        _ => return Err(CrispError::EvalError("Params should be a list".to_string())),
+    };
+
+    let body = args.get(1).unwrap();
+
+    Ok(CrispExpr::Lambda(CrispLambda {
+        params: symbol_names,
+        body: Box::new(body.clone()),
+    }))
 }
 
 #[cfg(test)]
@@ -141,8 +219,8 @@ mod tests {
             CrispExpr::Symbol("quote".to_string()),
             CrispExpr::List(vec![
                 CrispExpr::Symbol("+".to_string()),
-                CrispExpr::Number(3.),
-                CrispExpr::Number(4.),
+                CrispExpr::Primitive(Primitive::Number(3.)),
+                CrispExpr::Primitive(Primitive::Number(4.)),
             ]),
         ]);
 
@@ -150,9 +228,9 @@ mod tests {
             eval(&expr, &mut env),
             Ok(CrispExpr::List(vec![
                 CrispExpr::Symbol("+".to_string()),
-                CrispExpr::Number(3.),
-                CrispExpr::Number(4.),
-            ]))
+                CrispExpr::Primitive(Primitive::Number(3.)),
+                CrispExpr::Primitive(Primitive::Number(4.)),
+            ]),)
         );
     }
 
@@ -161,18 +239,24 @@ mod tests {
         let mut env = CrispEnv::default();
         let list = CrispExpr::List(vec![
             CrispExpr::Symbol("+".to_string()),
-            CrispExpr::Number(3.),
-            CrispExpr::Number(4.),
-            CrispExpr::Number(5.),
+            CrispExpr::Primitive(Primitive::Number(3.)),
+            CrispExpr::Primitive(Primitive::Number(4.)),
+            CrispExpr::Primitive(Primitive::Number(5.)),
         ]);
 
-        assert_eq!(eval(&list, &mut env), Ok(CrispExpr::Number(12.)));
+        assert_eq!(
+            eval(&list, &mut env),
+            Ok(CrispExpr::Primitive(Primitive::Number(12.)))
+        );
     }
 
     #[test]
     fn eval_number() {
         let mut env = CrispEnv::default();
-        let expr = CrispExpr::Number(45.);
-        assert_eq!(eval(&expr, &mut env), Ok(CrispExpr::Number(45.)));
+        let expr = CrispExpr::Primitive(Primitive::Number(45.));
+        assert_eq!(
+            eval(&expr, &mut env),
+            Ok(CrispExpr::Primitive(Primitive::Number(45.)))
+        );
     }
 }
